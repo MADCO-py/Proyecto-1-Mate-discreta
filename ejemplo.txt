@@ -1,0 +1,18 @@
+Conjuntos:
+U:={a,b,c,d,e,f,g,h,i,j,k,1,2,3,4,5}
+A:={a,1,3,d,g,h,4,5}
+B:={2,1,4,e,f,g,k}
+C:={b,d,f,h,k,2,4}
+D:={}
+E:={(1,a),(2,b),(3,c)}
+
+Operaciones:
+LaTeX: A \cup C
+LaTeX: A \cap C
+A\B
+LaTeX: \overline{A}
+LaTeX: (A \cup B) \cap C
+fun(E,A)
+LaTeX: \overline{D}
+D\U
+fun(LaTeX: A \times B)
