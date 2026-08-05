@@ -1,14 +1,6 @@
-# -*- coding: utf-8 -*-
-"""
-Programa interactivo para construir conjuntos y operar sobre ellos
-(union, interseccion, diferencia, complemento, conjunto referencial,
-simbolos de agrupacion y producto cartesiano), y para verificar si
-un conjunto de pares ordenados es una funcion.
-
-Autor: Miguel Angel David Carranza Osorio - Carnet 24458
-"""
-
 import re
+import sys
+import itertools
 
 # ---------------------------------------------------------------
 # Estado global del programa
@@ -222,7 +214,7 @@ class Parser:
         while self.peek() and self.peek().kind == 'CART':
             self.advance()
             der = self.parse_unary()
-            izq = frozenset((a, b) for a in izq for b in der)
+            izq = frozenset(itertools.product(izq, der))   # producto cartesiano
         return izq
 
     def parse_unary(self):
@@ -311,22 +303,77 @@ def verifica_funcion(pares, nombre_dominio=None):
 # ---------------------------------------------------------------
 # Procesamiento de una linea de "operacion"
 # ---------------------------------------------------------------
-def procesa_operacion(cruda):
+def procesa_operacion(cruda, interactivo=True):
     preparado = prepara_expresion(cruda)
 
     m = re.match(r'^fun\((.*)\)$', preparado, re.IGNORECASE | re.DOTALL)
     if m:
-        interior = m.group(1)
-        resultado = evalua_expresion(interior)
+        partes = split_top_level(m.group(1), ',')     # fun(EXPR) o fun(EXPR,DOMINIO)
+        resultado = evalua_expresion(partes[0])
         print(f'Conjunto evaluado dentro de fun(...): {formatea_conjunto(resultado)}')
-        nombre_dominio = input(
-            'Nombre del conjunto dominio para verificar si es funcion TOTAL '
-            '(Enter para omitir): ').strip()
-        verifica_funcion(resultado, nombre_dominio if nombre_dominio else None)
+        dominio = partes[1].strip() if len(partes) > 1 and partes[1].strip() else None
+        if dominio is None and interactivo:
+            dominio = input(
+                'Nombre del conjunto dominio para verificar si es funcion TOTAL '
+                '(Enter para omitir): ').strip() or None
+        verifica_funcion(resultado, dominio)
         return
 
     resultado = evalua_expresion(preparado)
     print(f'Resultado: {formatea_conjunto(resultado)}')
+
+
+# ---------------------------------------------------------------
+# Carga por lotes desde un archivo .txt
+#
+# Formato esperado (los encabezados "Conjuntos:" y "Operaciones:" son
+# opcionales, solo se ignoran si aparecen):
+#
+#   Conjuntos:
+#   U:={a,b,c,d,e,f,g,h,i,j,k,1,2,3,4,5}
+#   A:={a,1,3,d,g,h,4,5}
+#   ...
+#   Operaciones:
+#   A \cup C
+#   A\B
+#   fun(E)
+#   fun(A \times B, A)      <- domino opcional como 2do argumento
+# ---------------------------------------------------------------
+def procesa_archivo(ruta):
+    global referencial
+    try:
+        with open(ruta, encoding='utf-8') as f:
+            lineas = f.readlines()
+    except OSError as e:
+        print(f'No se pudo abrir el archivo: {e}')
+        return
+
+    print(f'--- Cargando archivo: {ruta} ---')
+    for cruda in lineas:
+        linea = cruda.strip()
+        if not linea or linea.lower() in ('conjuntos:', 'operaciones:'):
+            continue
+
+        m = re.match(r'^([A-Za-z][A-Za-z0-9]*)\s*:=\s*(.+)$', linea)
+        if m:
+            nombre, literal = m.group(1), m.group(2)
+            try:
+                conjuntos[nombre] = parse_conjunto_literal(literal)
+                print(f'{nombre} = {formatea_conjunto(conjuntos[nombre])}')
+                if nombre.upper() == 'U' and referencial is None:
+                    referencial = nombre
+                    print(f'  ("{nombre}" se toma automaticamente como conjunto referencial)')
+            except ValueError as e:
+                print(f'ERROR al definir {nombre}: {e}')
+            continue
+
+        print(f'>> {linea}')
+        try:
+            procesa_operacion(linea, interactivo=False)
+        except ValueError as e:
+            print(f'ERROR: {e}')
+
+    print('--- Fin del archivo ---')
 
 
 # ---------------------------------------------------------------
@@ -343,17 +390,21 @@ def menu():
     print("   '   complemento          A'")
     print("   x   producto cartesiano  AxB")
     print("   ( ) simbolos de agrupacion")
-    print('   fun(EXPR)  verifica si EXPR es una funcion')
+    print('   fun(EXPR)  o  fun(EXPR,DOMINIO)   verifica si EXPR es una funcion')
     print('   Tambien se acepta el prefijo "LaTeX:" usando \\cup \\cap \\times \\overline{} \\setminus')
     print()
+
+    if len(sys.argv) > 1:
+        procesa_archivo(sys.argv[1])
 
     while True:
         print('-' * 60)
         print('1) Definir un conjunto')
         print('2) Definir el conjunto referencial (universo)')
         print('3) Evaluar una operacion / expresion')
-        print('4) Listar conjuntos definidos')
-        print('5) Salir')
+        print('4) Cargar conjuntos y operaciones desde un archivo .txt')
+        print('5) Listar conjuntos definidos')
+        print('6) Salir')
         opcion = input('Elige una opcion: ').strip()
 
         global referencial
@@ -373,9 +424,13 @@ def menu():
 
             elif opcion == '3':
                 expr = input('Escribe la operacion (o "LaTeX: ..."): ').strip()
-                procesa_operacion(expr)
+                procesa_operacion(expr, interactivo=True)
 
             elif opcion == '4':
+                ruta = input('Ruta del archivo .txt: ').strip()
+                procesa_archivo(ruta)
+
+            elif opcion == '5':
                 if not conjuntos:
                     print('Aun no hay conjuntos definidos.')
                 else:
@@ -383,7 +438,7 @@ def menu():
                         marca = '  (referencial)' if nombre == referencial else ''
                         print(f'{nombre} = {formatea_conjunto(s)}{marca}')
 
-            elif opcion == '5':
+            elif opcion == '6':
                 print('Fin del programa.')
                 break
 
@@ -392,9 +447,10 @@ def menu():
 
         except ValueError as e:
             print(f'ERROR: {e}')
-        except ZeroDivisionError:
-            pass
 
 
 if __name__ == '__main__':
-    menu()
+    try:
+        menu()
+    except (EOFError, KeyboardInterrupt):
+        print('\nFin del programa.')
